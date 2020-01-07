@@ -28,23 +28,18 @@ def send_help(message):
 def add_deadline(message):
     user = util.get_user(message)
     user.set_state('add')
-    bot.send_message(
-        message.chat.id,
-        default_messages.add_deadline,
-    )
+    bot.send_message(message.chat.id, default_messages.add_deadline)
 
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('clnd'))
 def add_calendar(call):
     if call.data.endswith('nothing'):
-        bot.answer_callback_query(call.id, 'Передвинь месяц или выбери дату.')
+        pass
     elif call.data.endswith(('<', '>')):
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            reply_markup=Calendar(call.data).get_markup(
-                util.get_user(from_user=call.from_user)
-            ),
+            reply_markup=Calendar(call.data).get_markup(util.get_user(from_user=call.from_user)),
         )
     elif call.data.endswith('dot'):
         bot.answer_callback_query(call.id, 'Этот день не принадлежит выбранному месяцу.')
@@ -74,19 +69,9 @@ def list_done(message):
     user.set_state('')
     deadlines = user.get_done_deadlines()
     if len(deadlines) == 0:
-        bot.send_message(
-            message.chat.id,
-            default_messages.no_done_deadlines,
-        )
+        bot.send_message(message.chat.id, default_messages.no_done_deadlines)
     else:
-        strs = []
-        for i in range(len(deadlines)):
-            strs.append(
-                f'[{i+1}] '
-                f'{arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")} - '
-                f'{deadlines[i].title}'
-            )
-        bot.send_message(message.chat.id, 'Закрытые дедлайны:\n' + '\n'.join(strs))
+        bot.send_message(message.chat.id, 'Закрытые дедлайны:\n' + util.deadlines_to_str(deadlines))
 
 
 @bot.message_handler(commands=['list'])
@@ -95,19 +80,9 @@ def list_undone(message):
     user.set_state('')
     deadlines = user.get_undone_deadlines()
     if len(deadlines) == 0:
-        bot.send_message(
-            message.chat.id,
-            default_messages.no_active_deadlines,
-        )
+        bot.send_message(message.chat.id, default_messages.no_active_deadlines)
     else:
-        strs = []
-        for i in range(len(deadlines)):
-            strs.append(
-                f'[{i+1}] '
-                f'{arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")} - '
-                f'{deadlines[i].title}'
-            )
-        bot.send_message(message.chat.id, 'Дедлайны:\n' + '\n'.join(strs))
+        bot.send_message(message.chat.id, 'Дедлайны:\n' + util.deadlines_to_str(deadlines))
 
 
 @bot.message_handler(commands=['done'])
@@ -115,12 +90,14 @@ def mark_done(message):
     user = util.get_user(message)
     user.set_state('')
     deadlines = user.get_undone_deadlines()
-
-    bot.send_message(
-        message.chat.id,
-        default_messages.mark_done,
-        reply_markup=util.get_deadlines_markup(deadlines, 'done'),
-    )
+    if len(deadlines) == 0:
+        bot.send_message(message.chat.id, default_messages.no_active_deadlines)
+    else:
+        bot.send_message(
+            message.chat.id,
+            default_messages.mark_done,
+            reply_markup=util.get_deadlines_markup(deadlines, 'done'),
+        )
 
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('done'))
@@ -143,12 +120,14 @@ def mark_undone(message):
     user = util.get_user(message)
     user.set_state('')
     deadlines = user.get_done_deadlines()
-
-    bot.send_message(
-        message.chat.id,
-        default_messages.mark_undone,
-        reply_markup=util.get_deadlines_markup(deadlines, 'undone'),
-    )
+    if len(deadlines) == 0:
+        bot.send_message(message.chat.id, default_messages.no_done_deadlines)
+    else:
+        bot.send_message(
+            message.chat.id,
+            default_messages.mark_undone,
+            reply_markup=util.get_deadlines_markup(user.get_done_deadlines(), 'undone'),
+        )
 
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('undone'))
@@ -171,10 +150,7 @@ def mark_undone_cb(call):
 def create_group(message):
     user = util.get_user(message)
     user.set_state("create_group")
-    bot.send_message(
-        message.chat.id,
-        'Как назовем?',
-    )
+    bot.send_message(message.chat.id, 'Как назовем?')
 
 
 @bot.message_handler(commands=['groups'])
@@ -183,14 +159,11 @@ def list_groups(message):
     user.set_state('')
     groups = user.get_groups()
     if len(groups) == 0:
-        bot.send_message(
-            message.chat.id,
-            default_messages.no_groups,
-        )
+        bot.send_message(message.chat.id, default_messages.no_groups)
     else:
         strs = []
         for i in range(len(groups)):
-            strs.append(f'{groups[i].name}; ключ {groups[i].id}')
+            strs.append(f'{groups[i].name}; ключ {groups[i].id}')  # TODO
         bot.send_message(message.chat.id, 'Список групп:\n' + '\n'.join(strs))
 
 
@@ -202,7 +175,7 @@ def leave_group_cb(call):
         bot.answer_callback_query(call.id, 'Группа уже удалена.')
     else:
         bot.edit_message_text(
-            text=f'Если захочешь вернуться в {group.name}, знаешь ключ: {group.id}',
+            text=f'Если захочешь вернуться в "{group.name}", знаешь ключ: {group.id}',
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None,
@@ -215,21 +188,11 @@ def leave_group(message):
     user.set_state('')
     groups = user.get_groups()
     if len(groups) == 0:
-        bot.send_message(
-            message.chat.id,
-            'У тебя нет групп.',
-        )
+        bot.send_message(message.chat.id, default_messages.no_groups)
     else:
-        markup = InlineKeyboardMarkup()
-        for group in groups:
-            markup.add(InlineKeyboardButton(
-                group.name,
-                callback_data=f'leave {group.id}',
-            ))
         bot.send_message(
-            message.chat.id,
-            default_messages.leave_group,
-            reply_markup=markup,
+            message.chat.id, default_messages.leave_group,
+            reply_markup=util.get_groups_markup(groups, 'leave'),
         )
 
 
@@ -237,22 +200,25 @@ def leave_group(message):
 def join_group(message):
     user = util.get_user(message)
     user.set_state('join')
-    cid = message.chat.id
-    bot.send_message(
-        cid,
-        'Пришли мне ключ группы',
-    )
+    bot.send_message(message.chat.id, 'Пришли мне ключ группы',)
 
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('shareb'))
 def share_back_to_deadlines(call):
     user = util.get_user(from_user=call.from_user)
     deadlines = user.get_undone_deadlines()
+    if len(deadlines) == 0:
+        text = default_messages.no_active_deadlines
+        markup = None
+    else:
+        text = 'Каким дедлайном поделимся?'
+        markup = util.get_deadlines_markup(deadlines, 'shared')
+
     bot.edit_message_text(
-        'Каким дедлайном поделимся?',
+        text=text,
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
-        reply_markup=util.get_deadlines_markup(deadlines, 'shared'),
+        reply_markup=markup,
     )
 
 
@@ -262,19 +228,11 @@ def share_deadline_chosen_cb(call):
     groups = user.get_groups()
     deadline = util.get_deadline(deadline_id=call.data.split()[1])
 
-    markup = InlineKeyboardMarkup()
+    markup = util.get_groups_markup(groups, 'shareg')
+    markup.add(InlineKeyboardButton('К выбору дедлайна', callback_data='shareb'))
 
-    for group in groups:
-        markup.add(InlineKeyboardButton(
-            group.name,
-            callback_data=f'shareg {deadline.id} {group.id}',
-        ))
-    markup.add(InlineKeyboardButton(
-        'К выбору дедлайна',
-        callback_data='shareb',
-    ))
     bot.edit_message_text(
-        text=f'Ты делишься дедлайном {deadline.title}.\nКакую группу осчастливим?',
+        text=f'Ты делишься дедлайном "{deadline.title}".\nКакую группу осчастливим?',
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
         reply_markup=markup,
@@ -289,7 +247,7 @@ def share_group_chosen_cb(call):
     for user in group.users:
         user.add_deadline(deadline)
     bot.edit_message_text(
-        f'Ты поделился дедлайном {deadline.title} с {group.name}',
+        f'Ты поделился дедлайном "{deadline.title}" с "{group.name}".',
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
         reply_markup=None,
@@ -305,7 +263,7 @@ def delete_deadline_cb(call):
         bot.answer_callback_query(call.id, 'Дедлайн отмечен выполненным/удалён.')
     else:
         bot.edit_message_text(
-            text=f'Дедлайн {deadline.title} в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:MM")} удалён.',
+            text=f'Дедлайн "{deadline.title}" в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:MM")} удалён.',
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None,
@@ -319,9 +277,8 @@ def delete_deadline(message):
     deadlines = user.get_undone_deadlines()
 
     bot.send_message(
-        message.chat.id,
-        'Какой дедлайн удалим?',
-        reply_markup=util.get_deadlines_markup(deadlines, 'del'),
+        message.chat.id, 'Какой дедлайн удалим?',
+        reply_markup=util.get_deadlines_markup(deadlines, 'del')
     )
 
 
@@ -330,24 +287,24 @@ def share(message):
     user = util.get_user(message)
     user.set_state('')
     deadlines = user.get_undone_deadlines()
-
-    bot.send_message(
-        message.chat.id,
-        'Каким дедлайном поделимся?',
-        reply_markup=util.get_deadlines_markup(deadlines, 'shared'),
-    )
+    if len(deadlines) == 0:
+        bot.send_message(message.chat.id, default_messages.no_groups)
+    else:
+        bot.send_message(
+            message.chat.id, 'Каким дедлайном поделимся?',
+            reply_markup=util.get_deadlines_markup(deadlines, 'shared'),
+        )
 
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('view'))
 def calendar_cb(call):
-    if call.data.endswith(('<', '>')):
+    if call.data.endswith('nothing'):
+        pass
+    elif call.data.endswith(('<', '>')):
         bot.edit_message_reply_markup(
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            reply_markup=Calendar(call.data).get_markup(
-                util.get_user(from_user=call.from_user),
-                cb_prefix='view',
-            ),
+            reply_markup=Calendar(call.data).get_markup(util.get_user(from_user=call.from_user), 'view'),
         )
     elif call.data.endswith('dot'):
         bot.answer_callback_query(call.id, 'Этот день не принадлежит выбранному месяцу.')
@@ -362,7 +319,7 @@ def calendar_cb(call):
         for i in range(len(deadlines)):
             if chosen_date_from <= deadlines[i].timestamp <= chosen_date_to:
                 strs.append(
-                    f'[{i + 1}] '
+                    f'[{len(strs) + 1}] '
                     f'{arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")} - '
                     f'{deadlines[i].title}'
                 )
@@ -372,11 +329,7 @@ def calendar_cb(call):
         else:
             text = f'Дедлайны на {arrow.get(chosen_date_from).format("DD.MM.YY")}:\n' + '\n'.join(strs)
 
-        bot.edit_message_text(
-            text=text,
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-        )
+        bot.edit_message_text(text, chat_id=call.message.chat.id, message_id=call.message.message_id)
 
 
 @bot.message_handler(commands=['calendar'])
@@ -384,10 +337,7 @@ def give_calendar(message):
     bot.send_message(
         message.chat.id,
         'Нажми на дату, чтобы посмотреть на все дедлайны в этот день',
-        reply_markup=Calendar().get_markup(
-            util.get_user(message),
-            cb_prefix='view',
-        ),
+        reply_markup=Calendar().get_markup(util.get_user(message), 'view'),
     )
 
 
@@ -397,10 +347,7 @@ def free_of_commands(message):
     cid = message.chat.id
 
     if user.state == "" or user.state is None:
-        bot.send_message(
-            cid,
-            default_messages.unknown_state,
-        )
+        bot.send_message(cid, default_messages.unknown_state)
         return
 
     if user.state == "add":
@@ -422,25 +369,16 @@ def free_of_commands(message):
         name = ' '.join(message.text.split())
         group = Group(name)
         user.add_group(group)
-        bot.send_message(
-            cid,
-            f'Группа {name} создана. Ключ: {group.id}.'
-        )
+        bot.send_message(cid, f'Группа "{name}" создана. Ключ: {group.id}.')
 
     elif user.state == "join":
         key = message.text
         group = util.get_group(key)
         if group is None:
-            bot.send_message(
-                cid,
-                f'Группа с ключом {key} не найдена. Попробуй еще.',
-            )
+            bot.send_message(cid, f'Группа с ключом {key} не найдена. Попробуй еще.',)
             return
         user.add_group(group)
-        bot.send_message(
-            cid,
-            f'Ты присоединился к группе {group.name}.',
-        )  # TODO add last group deadlines
+        bot.send_message(cid, f'Ты присоединился к группе "{group.name}".')
         for deadline in group.deadlines:
             user.add_deadline(deadline)
 

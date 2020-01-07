@@ -244,3 +244,19 @@ def get_deadlines_markup(deadlines, cb_data_prefix):
             callback_data=f'{cb_data_prefix} {deadline.id}',
         ))
     return markup
+
+
+def get_groups_markup(groups, cb_data_prefix):
+    markup = InlineKeyboardMarkup()
+    for group in groups:
+        markup.add(InlineKeyboardButton(group.name, callback_data=f'{cb_data_prefix} {group.id}'))
+    return markup
+
+
+def deadlines_to_str(deadlines, sep='\n'):
+    strs = []
+    for i in range(len(deadlines)):
+        strs.append(
+            f'[{i + 1}] {arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")} - {deadlines[i].title}'
+        )
+    return sep.join(strs)
