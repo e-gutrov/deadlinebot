@@ -108,7 +108,7 @@ def mark_done_cb(call):
         bot.answer_callback_query(call.id, 'Дедлайн уже выполнен/удален.')
     else:
         bot.edit_message_text(
-            text=f'Дедлайн {deadline.title} отмечен выполненным.',
+            text=f'Дедлайн "{deadline.title}" отмечен выполненным.',
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None,
@@ -139,7 +139,7 @@ def mark_undone_cb(call):
         bot.answer_callback_query(call.id, 'Дедлайн уже отмечен невыполненным/удален.')
     else:
         bot.edit_message_text(
-            text=f'Дедлайн {deadline.title} отмечен невыполненным',
+            text=f'Дедлайн "{deadline.title}" отмечен невыполненным.',
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None,
@@ -339,6 +339,33 @@ def give_calendar(message):
         'Нажми на дату, чтобы посмотреть на все дедлайны в этот день',
         reply_markup=Calendar().get_markup(util.get_user(message), 'view'),
     )
+
+
+@bot.callback_query_handler(func=lambda x: x.data.startswith('key'))
+def get_key_cb(call):
+    group = util.get_group(call.data.split()[1])
+    bot.edit_message_text(
+        f'Высылаю ключ для присоединения к группе "{group.name}"',
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        reply_markup=None,
+    )
+    bot.send_message(call.message.chat.id, {group.id})
+
+
+@bot.message_handler(commands=['key'])
+def get_key(message):
+    user = util.get_user(message)
+    user.set_state('')
+
+    groups = user.get_groups()
+    if len(groups) == 0:
+        bot.send_message(message.chat.id, default_messages.no_groups)
+    else:
+        bot.send_message(
+            message.chat.id, default_messages.key,
+            reply_markup=util.get_groups_markup(groups, 'key'),
+        )
 
 
 @bot.message_handler(func=lambda x: True)
