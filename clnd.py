@@ -15,8 +15,8 @@ class Calendar:
             else:
                 self.date = self.date.shift(months=1)
 
-    def get_markup(self, user):
-        callback_txt = 'clnd {}.' + self.date.format('MM.YYYY') + ' {}'
+    def get_markup(self, user, cb_prefix='clnd'):
+        callback_txt = cb_prefix + ' {}.' + self.date.format('MM.YYYY') + ' {}'
         markup = InlineKeyboardMarkup(row_width=7)
 
         markup.add(
@@ -49,6 +49,5 @@ class Calendar:
                         btn_txt += f'({cnt[days[j]]})'
                     row.append(InlineKeyboardButton(btn_txt, callback_data=callback_txt.format(str(days[j]), 'set')))
             markup.add(*row)
-        # TODO mark cur day if exists(?)
         return markup
 

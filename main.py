@@ -285,7 +285,7 @@ def share_deadline_chosen_cb(call):
 def share_group_chosen_cb(call):
     deadline = util.get_deadline(call.data.split()[1])
     group = util.get_group(call.data.split()[2])
-    # group.add_deadline() TODO
+    group.add_deadline(deadline)
     for user in group.users:
         user.add_deadline(deadline)
     bot.edit_message_text(
@@ -293,6 +293,35 @@ def share_group_chosen_cb(call):
         chat_id=call.message.chat.id,
         message_id=call.message.message_id,
         reply_markup=None,
+    )
+
+
+@bot.callback_query_handler(func=lambda x: x.data.startswith('del'))
+def delete_deadline_cb(call):
+    user = util.get_user(from_user=call.from_user)
+    deadline = user.remove_deadline(deadline_id=call.data.split()[1])
+
+    if deadline is None:
+        bot.answer_callback_query(call.id, 'Дедлайн отмечен выполненным/удалён.')
+    else:
+        bot.edit_message_text(
+            text=f'Дедлайн {deadline.title} в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:MM")} удалён.',
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=None,
+        )
+
+
+@bot.message_handler(commands=['delete'])
+def delete_deadline(message):
+    user = util.get_user(message)
+    user.set_state('')
+    deadlines = user.get_undone_deadlines()
+
+    bot.send_message(
+        message.chat.id,
+        'Какой дедлайн удалим?',
+        reply_markup=util.get_deadlines_markup(deadlines, 'del'),
     )
 
 
@@ -306,6 +335,59 @@ def share(message):
         message.chat.id,
         'Каким дедлайном поделимся?',
         reply_markup=util.get_deadlines_markup(deadlines, 'shared'),
+    )
+
+
+@bot.callback_query_handler(func=lambda x: x.data.startswith('view'))
+def calendar_cb(call):
+    if call.data.endswith(('<', '>')):
+        bot.edit_message_reply_markup(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=Calendar(call.data).get_markup(
+                util.get_user(from_user=call.from_user),
+                cb_prefix='view',
+            ),
+        )
+    elif call.data.endswith('dot'):
+        bot.answer_callback_query(call.id, 'Этот день не принадлежит выбранному месяцу.')
+    else:
+        chosen_date_from = arrow.get(call.data, 'D.MM.YYYY').replace(hour=0, minute=0, second=0)
+        chosen_date_to = chosen_date_from.shift(days=1)
+        chosen_date_from = chosen_date_from.timestamp
+        chosen_date_to = chosen_date_to.timestamp
+        user = util.get_user(from_user=call.from_user)
+        deadlines = user.get_undone_deadlines()
+        strs = []
+        for i in range(len(deadlines)):
+            if chosen_date_from <= deadlines[i].timestamp <= chosen_date_to:
+                strs.append(
+                    f'[{i + 1}] '
+                    f'{arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")} - '
+                    f'{deadlines[i].title}'
+                )
+
+        if len(strs) == 0:
+            text = f'На {arrow.get(chosen_date_from).format("DD.MM.YY")} дедлайнов нет.'
+        else:
+            text = f'Дедлайны на {arrow.get(chosen_date_from).format("DD.MM.YY")}:\n' + '\n'.join(strs)
+
+        bot.edit_message_text(
+            text=text,
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+        )
+
+
+@bot.message_handler(commands=['calendar'])
+def give_calendar(message):
+    bot.send_message(
+        message.chat.id,
+        'Нажми на дату, чтобы посмотреть на все дедлайны в этот день',
+        reply_markup=Calendar().get_markup(
+            util.get_user(message),
+            cb_prefix='view',
+        ),
     )
 
 
@@ -359,6 +441,8 @@ def free_of_commands(message):
             cid,
             f'Ты присоединился к группе {group.name}.',
         )  # TODO add last group deadlines
+        for deadline in group.deadlines:
+            user.add_deadline(deadline)
 
     user.set_state('')
 

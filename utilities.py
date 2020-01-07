@@ -26,8 +26,16 @@ class User(Base):
     deadlines = relationship('UserDeadlineAssociation', back_populates='user')
     groups = relationship('Group', secondary=lambda: user_group_assoc_table, back_populates='users')
 
+    def get_assoc(self, deadline=None, deadline_id=None):
+        if deadline_id is None:
+            deadline_id = deadline.id
+        return session.query(UserDeadlineAssociation).filter_by(
+            user_id=self.id,
+            deadline_id=deadline_id,
+        ).first()
+
     def add_deadline(self, deadline):
-        if session.query(UserDeadlineAssociation).filter_by(user_id=self.id, deadline_id=deadline.id).first() is None:
+        if self.get_assoc(deadline) is None:
             session.add(
                 UserDeadlineAssociation(
                     user=self,
@@ -37,6 +45,16 @@ class User(Base):
             )
         session.commit()
 
+    def remove_deadline(self, deadline=None, deadline_id=None):
+        assoc = self.get_assoc(deadline, deadline_id)
+        if assoc is None or assoc.status != 0:
+            return None
+        else:
+            deadline = assoc.deadline
+            session.delete(assoc)
+            session.commit()
+            return deadline
+
     def shift_status(self, shift, lb=0):
         for assoc in self.deadlines:
             if assoc.status > lb:
@@ -44,14 +62,6 @@ class User(Base):
             if assoc.status > MAX_STATUS:
                 session.delete(assoc)
         session.commit()
-
-    def get_assoc(self, deadline, deadline_id):
-        if deadline_id is None:
-            deadline_id = deadline.id
-        return session.query(UserDeadlineAssociation).filter_by(
-            user_id=self.id,
-            deadline_id=deadline_id,
-        ).first()
 
     def mark_done(self, deadline=None, deadline_id=None):
         assoc = self.get_assoc(deadline, deadline_id)
@@ -110,12 +120,14 @@ class User(Base):
 
 class Group(Base):
     __tablename__ = 'groups'
+    MAX_DEADLINES = 10
 
     id = Column(String, primary_key=True)
     name = Column(String)
 
     users = relationship('User', secondary=lambda: user_group_assoc_table, back_populates='groups')
-    deadlines = relationship('GroupDeadlineAssociation', back_populates='group')
+    deadlines = relationship('Deadline', secondary=lambda: group_deadline_assoc_table)
+    # deadlines = relationship('GroupDeadlineAssociation', back_populates='group')
 
     def __init__(self, name: str):
         self.name = name
@@ -127,14 +139,15 @@ class Group(Base):
         session.commit()
 
     def add_deadline(self, deadline):
-        session.add(
-            GroupDeadlineAssociation(
-                group=self,
-                deadline=deadline,
-                status=len(self.deadlines),
-            )
-        )
-        session.commit()
+        if deadline in self.deadlines:
+            return None
+        else:
+            self.deadlines.append(deadline)
+            if len(self.deadlines) > Group.MAX_DEADLINES:
+                pass
+            session.commit()
+
+            return deadline
 
 
 class Deadline(Base):
@@ -162,23 +175,27 @@ class UserDeadlineAssociation(Base):
     deadline = relationship('Deadline', back_populates='users')
 
 
-class GroupDeadlineAssociation(Base):
-    __tablename__ = 'group_deadline_association'
-
-    group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
-    deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
-    status = Column(Integer)
-
-    group = relationship('Group', back_populates='deadlines')
-    deadline = relationship('Deadline')
+# class GroupDeadlineAssociation(Base):
+#     __tablename__ = 'group_deadline_association'
+#
+#     group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
+#     deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
+#     status = Column(Integer)
+#
+#     group = relationship('Group', back_populates='deadlines')
+#     deadline = relationship('Deadline')
 
 
 user_group_assoc_table = sqlalchemy.Table(
-    'user_group_assoc_table', Base.metadata,
+    'user_group_association', Base.metadata,
     Column('user_id', Integer, ForeignKey('users.id')),
     Column('group_id', String, ForeignKey('groups.id'))
 )
-
+group_deadline_assoc_table = sqlalchemy.Table(
+    'group_deadline_association', Base.metadata,
+    Column('group_id', String, ForeignKey('groups.id')),
+    Column('deadline_id', Integer, ForeignKey('deadlines.id')),
+)
 Base.metadata.create_all(engine)
 session = Session()
 
