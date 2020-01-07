@@ -1,5 +1,6 @@
-import uuid
+import string
 
+import numpy as np
 import sqlalchemy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import Column, Integer, String, ForeignKey
@@ -13,6 +14,13 @@ Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
 MAX_STATUS = 10
+
+KEY_LEN = 8
+KEY_CHARS = string.digits + string.ascii_letters
+
+
+def gen_key():
+    return ''.join([KEY_CHARS[np.random.choice(len(KEY_CHARS))] for _ in range(KEY_LEN)])
 
 
 class User(Base):
@@ -132,7 +140,7 @@ class Group(Base):
     def __init__(self, name: str):
         self.name = name
         while True:
-            self.id = str(uuid.uuid4())
+            self.id = gen_key()
             if session.query(Group).filter_by(id=self.id).count() == 0:
                 break
         session.add(self)

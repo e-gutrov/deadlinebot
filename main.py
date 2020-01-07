@@ -177,7 +177,7 @@ def create_group(message):
     )
 
 
-@bot.message_handler(commands=['list_groups'])
+@bot.message_handler(commands=['groups'])
 def list_groups(message):
     user = util.get_user(message)
     user.set_state('')
