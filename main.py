@@ -12,6 +12,13 @@ TOKEN = input('Enter token: ')
 bot = telebot.TeleBot(TOKEN, threaded=False)  # threaded kills sqlalchemy, need to fix(?)
 
 
+@bot.message_handler(commands=['reset'])
+def reset_state(message):
+    user = util.get_user(message)
+    user.set_state('')
+    bot.send_message(message.chat.id, default_messages.ok)
+
+
 @bot.callback_query_handler(func=lambda x: x.data.startswith('settime'))
 def add_deadline_time_cb(call):
     time = arrow.get(call.data.split()[1], 'HH:mm')

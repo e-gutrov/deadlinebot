@@ -152,7 +152,7 @@ class Group(Base):
         else:
             self.deadlines.append(deadline)
             if len(self.deadlines) > Group.MAX_DEADLINES:
-                pass
+                pass  # TODO by date
             session.commit()
 
             return deadline
@@ -177,6 +177,7 @@ class UserDeadlineAssociation(Base):
 
     user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
     deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
+
     status = Column(Integer)  # 0 for undone, 1..MAX_DONE for done (1-latest)
 
     user = relationship('User', back_populates='deadlines')
