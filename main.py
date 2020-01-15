@@ -12,6 +12,40 @@ TOKEN = input('Enter token: ')
 bot = telebot.TeleBot(TOKEN, threaded=False)  # threaded kills sqlalchemy, need to fix(?)
 
 
+@bot.callback_query_handler(func=lambda x: x.data.startswith('settime'))
+def add_deadline_time_cb(call):
+    time = arrow.get(call.data.split()[1], 'HH:mm')
+    msg_strs = call.message.text.split('\n')
+    deadline_title = msg_strs[0][len('Дедлайн: '):]
+    deadline_date = arrow.get(msg_strs[1][len('Дата: '):], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
+    user = util.get_user(from_user=call.from_user)
+    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
+    user.add_deadline(util.add_deadline(deadline))
+    user.set_state('')
+
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    bot.send_message(call.message.chat.id, 'OK')
+
+
+@bot.message_handler(func=lambda x: util.get_user(x).state.startswith('settime'))  # TODO: fix
+def add_deadline_time(message):
+    try:
+        time = arrow.get(message.text, ['HH:mm', 'H:mm'])
+    except (arrow.ParserError, ValueError):
+        bot.send_message(message.chat.id, default_messages.invalid_time)
+        return
+
+    user = util.get_user(message)
+    tokens = user.state.split()
+    deadline_date = arrow.get(tokens[1], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
+    deadline_title = ' '.join(tokens[2:])
+
+    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
+    user.add_deadline(util.add_deadline(deadline))
+    user.set_state('')
+    bot.send_message(message.chat.id, 'OK')
+
+
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     util.get_user(message).set_state('')
@@ -46,21 +80,21 @@ def add_calendar(call):
     else:
         msg_strs = call.message.text.split('\n')
         deadline_title = msg_strs[0][len('Дедлайн: '):]
-        deadline_time = msg_strs[1][len('Время: '):].split(':')
-        deadline_date = arrow.get(call.data, 'D.MM.YYYY').replace(
-            hour=int(deadline_time[0]),
-            minute=int(deadline_time[1]),
+        deadline_date = arrow.get(call.data, 'D.MM.YYYY')
+
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton('00:00', callback_data='settime 00:00'),
+            InlineKeyboardButton('23:59', callback_data='settime 23:59'),
         )
 
         bot.edit_message_text(
-            text=f'Дедлайн добавлен.\nНазвание: {deadline_title}\nДата: {deadline_date.format("DD.MM.YYYY HH:mm")}',
+            f'Дедлайн: {deadline_title}\nДата: {deadline_date.format("DD.MM.YY")}\nПришли мне время в формате чч:мм',
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
-            reply_markup=None,
+            reply_markup=markup,
         )
-        user = util.get_user(from_user=call.from_user)
-        deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
-        user.add_deadline(util.add_deadline(deadline))
+        util.get_user(from_user=call.from_user).set_state(f'settime {deadline_date.format("DD.MM.YY")} {deadline_title}')
 
 
 @bot.message_handler(commands=['list_done'])
@@ -163,7 +197,7 @@ def list_groups(message):
     else:
         strs = []
         for i in range(len(groups)):
-            strs.append(f'{groups[i].name}; ключ {groups[i].id}')  # TODO
+            strs.append(f'[{i + 1}] {groups[i].name}')
         bot.send_message(message.chat.id, 'Список групп:\n' + '\n'.join(strs))
 
 
@@ -378,17 +412,10 @@ def free_of_commands(message):
         return
 
     if user.state == "add":
-        msg_tokens = message.text.split()
-        try:
-            deadline_time = arrow.get(msg_tokens[-1], ['HH:mm', 'HH.mm', 'H:mm', 'H.mm']).format('HH:mm')
-            deadline_title = ' '.join(msg_tokens[:-1])
-        except (IndexError, arrow.parser.ParserError, arrow.parser.ParserMatchError):
-            deadline_time = '23:59'
-            deadline_title = ' '.join(msg_tokens)
-
+        deadline_title = ' '.join(message.text.split())
         bot.send_message(
             cid,
-            f'Дедлайн: {deadline_title}\nВремя: {deadline_time}\nВыбери дату:',
+            f'Дедлайн: {deadline_title}\nВыбери дату:',
             reply_markup=Calendar().get_markup(user),
         )
 

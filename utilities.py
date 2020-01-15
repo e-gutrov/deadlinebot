@@ -222,6 +222,7 @@ def get_user(message=None, from_user=None):
     if user is None:
         user = User(id=from_user.id)
         session.add(user)
+        user.state = ''
     user.first_name = from_user.first_name
     user.last_name = from_user.last_name
     session.commit()
@@ -253,10 +254,29 @@ def get_groups_markup(groups, cb_data_prefix):
     return markup
 
 
-def deadlines_to_str(deadlines, sep='\n'):
+def deadlines_to_str(deadlines, sep='\n', with_group=False):
     strs = []
+    group_deadlines = dict()
+    id_to_group = dict()
+
     for i in range(len(deadlines)):
-        strs.append(
-            f'[{i + 1}] {arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")} - {deadlines[i].title}'
-        )
-    return sep.join(strs)
+        date = arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")
+        if not with_group:
+            strs.append(f'[{i + 1}] {date} - {deadlines[i].title}')
+        else:
+            group_id = deadlines[i].group_id
+
+            if group_id == 0:
+                strs.append(f'{date} - {deadlines[i].title}')  # personal
+                continue
+            if group_id not in id_to_group:
+                id_to_group[group_id] = get_group(group_id).name
+            name = id_to_group[group_id]
+            if name not in group_deadlines:
+                group_deadlines[name] = []
+            group_deadlines[name].append(f'{date} - {deadlines[i].title}')
+
+    if not with_group:
+        return sep.join(strs)
+    else:
+        result = ''
