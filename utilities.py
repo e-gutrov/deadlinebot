@@ -118,12 +118,15 @@ class User(Base):
         done_deadlines.sort(key=lambda x: x.status)
         return list(map(lambda x: x.deadline, done_deadlines))
 
-    def get_undone_deadlines(self):
+    def get_undone_deadlines(self, raw=False):
         undone_deadlines = []
         for i in self.deadlines:
             if i.status == 0:
-                undone_deadlines.append(i.deadline)
-        undone_deadlines.sort(key=lambda x: (x.timestamp, x.id))
+                undone_deadlines.append(i.deadline if not raw else i)
+        if not raw:
+            undone_deadlines.sort(key=lambda x: (x.timestamp, x.id))
+        else:
+            undone_deadlines.sort(key=lambda x: (x.deadline.timestamp, x.deadline.id))
         return undone_deadlines
 
 
@@ -256,29 +259,31 @@ def get_groups_markup(groups, cb_data_prefix):
     return markup
 
 
-def deadlines_to_str(deadlines, sep='\n', with_group=False):
+def deadlines_to_str(deadlines, sep='\n', group_sep='\n\n', with_group=False):
     strs = []
     group_deadlines = dict()
-    id_to_group = dict()
 
     for i in range(len(deadlines)):
-        date = arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")
+        date = arrow.get(deadlines[i].deadline.timestamp).format("DD.MM.YY HH:mm")
+        deadline_str = f'{date} - {deadlines[i].deadline.title}'
         if not with_group:
-            strs.append(f'[{i + 1}] {date} - {deadlines[i].title}')
+            strs.append(f'[{i + 1}] {deadline_str}')
         else:
-            group_id = deadlines[i].group_id
-
-            if group_id == 0:
-                strs.append(f'{date} - {deadlines[i].title}')  # personal
+            group_name = deadlines[i].group_name
+            if group_name is None:
+                strs.append(deadline_str)
                 continue
-            if group_id not in id_to_group:
-                id_to_group[group_id] = get_group(group_id).name
-            name = id_to_group[group_id]
-            if name not in group_deadlines:
-                group_deadlines[name] = []
-            group_deadlines[name].append(f'{date} - {deadlines[i].title}')
+            group_deadlines.setdefault(group_name, []).append(deadline_str)
 
     if not with_group:
         return sep.join(strs)
     else:
-        result = ''
+        if len(strs) == 0:
+            result = ''
+        else:
+            result = f'Личные:{sep}{sep.join(strs)}'
+        for i in group_deadlines:
+            if len(result) > 0:
+                result += group_sep
+            result += f'{i}:{sep}{sep.join(group_deadlines[i])}'
+        return result
