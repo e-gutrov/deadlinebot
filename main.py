@@ -286,7 +286,7 @@ def share_group_chosen_cb(call):
     group = util.get_group(call.data.split()[2])
     group.add_deadline(deadline)
     for user in group.users:
-        user.add_deadline(deadline)
+        user.add_deadline(deadline, group.name)
     bot.edit_message_text(
         f'Ты поделился дедлайном "{deadline.title}" с "{group.name}".',
         chat_id=call.message.chat.id,
@@ -304,7 +304,7 @@ def delete_deadline_cb(call):
         bot.answer_callback_query(call.id, 'Дедлайн отмечен выполненным/удалён.')
     else:
         bot.edit_message_text(
-            text=f'Дедлайн "{deadline.title}" в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:MM")} удалён.',
+            text=f'Дедлайн "{deadline.title}" в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:mm")} удалён.',
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None,
@@ -329,6 +329,8 @@ def share(message):
     user.set_state('')
     deadlines = user.get_undone_deadlines()
     if len(deadlines) == 0:
+        bot.send_message(message.chat.id, default_messages.no_active_deadlines)
+    elif len(user.groups) == 0:
         bot.send_message(message.chat.id, default_messages.no_groups)
     else:
         bot.send_message(

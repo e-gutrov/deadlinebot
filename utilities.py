@@ -42,12 +42,13 @@ class User(Base):
             deadline_id=deadline_id,
         ).first()
 
-    def add_deadline(self, deadline):
+    def add_deadline(self, deadline, group_name=None):
         if self.get_assoc(deadline) is None:
             session.add(
                 UserDeadlineAssociation(
                     user=self,
                     deadline=deadline,
+                    group_name=group_name,
                     status=0,
                 )
             )
@@ -177,12 +178,12 @@ class UserDeadlineAssociation(Base):
 
     user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
     deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
+    group_name = Column(String)
 
     status = Column(Integer)  # 0 for undone, 1..MAX_DONE for done (1-latest)
 
     user = relationship('User', back_populates='deadlines')
     deadline = relationship('Deadline', back_populates='users')
-
 
 # class GroupDeadlineAssociation(Base):
 #     __tablename__ = 'group_deadline_association'
