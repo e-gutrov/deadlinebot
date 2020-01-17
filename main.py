@@ -251,6 +251,9 @@ def share_back_to_deadlines(call):
     if len(deadlines) == 0:
         text = default_messages.no_active_deadlines
         markup = None
+    elif len(user.groups) == 0:
+        text = default_messages.no_groups
+        markup = None
     else:
         text = 'Каким дедлайном поделимся?'
         markup = util.get_deadlines_markup(deadlines, 'shared')
@@ -269,7 +272,7 @@ def share_deadline_chosen_cb(call):
     groups = user.get_groups()
     deadline = util.get_deadline(deadline_id=call.data.split()[1])
 
-    markup = util.get_groups_markup(groups, 'shareg')
+    markup = util.get_groups_markup(groups, f'shareg {deadline.id}')
     markup.add(InlineKeyboardButton('К выбору дедлайна', callback_data='shareb'))
 
     bot.edit_message_text(
@@ -282,8 +285,9 @@ def share_deadline_chosen_cb(call):
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('shareg'))
 def share_group_chosen_cb(call):
-    deadline = util.get_deadline(call.data.split()[1])
-    group = util.get_group(call.data.split()[2])
+    tokens = call.data.split()
+    deadline = util.get_deadline(tokens[1])
+    group = util.get_group(tokens[2])
     group.add_deadline(deadline)
     for user in group.users:
         user.add_deadline(deadline, group.name)
