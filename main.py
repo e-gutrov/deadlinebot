@@ -123,7 +123,7 @@ def list_undone(message):
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_active_deadlines)
     else:
-        bot.send_message(message.chat.id, 'Дедлайны:\n' + util.deadlines_to_str(deadlines, with_group=True))
+        bot.send_message(message.chat.id, 'Дедлайны\n\n' + util.deadlines_to_str(deadlines, with_group=True))
 
 
 @bot.message_handler(commands=['done'])

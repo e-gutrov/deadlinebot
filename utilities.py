@@ -259,7 +259,10 @@ def get_groups_markup(groups, cb_data_prefix):
     return markup
 
 
-def deadlines_to_str(deadlines, sep='\n', group_sep='\n\n', with_group=False):
+def deadlines_to_str(deadlines, with_group=False):
+    sep = '\n🔥'
+    group_sep = '\n\n👥'
+
     strs = []
     group_deadlines = dict()
 
