@@ -1,4 +1,5 @@
 import string
+import logging
 
 import numpy as np
 import sqlalchemy
@@ -17,6 +18,8 @@ MAX_STATUS = 10
 
 KEY_LEN = 8
 KEY_CHARS = string.digits + string.ascii_letters
+logging.basicConfig(filename='info.log', filemode='a', level=logging.INFO)
+logger = logging.getLogger('utilities-logger')
 
 
 def gen_key():
@@ -116,7 +119,7 @@ class User(Base):
             if i.status != 0:
                 done_deadlines.append(i)
         done_deadlines.sort(key=lambda x: x.status)
-        return list(map(lambda x: x.deadline, done_deadlines))
+        return done_deadlines
 
     def get_undone_deadlines(self, raw=False):
         undone_deadlines = []
@@ -219,10 +222,9 @@ def add_deadline(deadline):
     return deadline
 
 
-def get_user(message=None, from_user=None):
+def get_user(message=None, from_user=None, count_request=True):
     if from_user is None:
         from_user = message.from_user
-    # print('getting user', from_user)
     user = session.query(User).filter_by(id=from_user.id).first()
     if user is None:
         user = User(id=from_user.id)
@@ -231,6 +233,8 @@ def get_user(message=None, from_user=None):
     user.first_name = from_user.first_name
     user.last_name = from_user.last_name
     session.commit()
+    if count_request:
+        logger.info(f'Successfully got user {user.first_name} {user.last_name}')
     return user
 
 
@@ -259,9 +263,10 @@ def get_groups_markup(groups, cb_data_prefix):
     return markup
 
 
-def deadlines_to_str(deadlines, with_group=False):
+def deadlines_to_str(deadlines, done=False):
     sep = '\n🔥'
-    group_sep = '\n\n👥'
+    group_sep = '\n\n'
+    group_char = '👥'
 
     strs = []
     group_deadlines = dict()
@@ -269,7 +274,7 @@ def deadlines_to_str(deadlines, with_group=False):
     for i in range(len(deadlines)):
         date = arrow.get(deadlines[i].deadline.timestamp).format("DD.MM.YY HH:mm")
         deadline_str = f'{date} - {deadlines[i].deadline.title}'
-        if not with_group:
+        if not done:
             strs.append(f'[{i + 1}] {deadline_str}')
         else:
             group_name = deadlines[i].group_name
@@ -278,7 +283,7 @@ def deadlines_to_str(deadlines, with_group=False):
                 continue
             group_deadlines.setdefault(group_name, []).append(deadline_str)
 
-    if not with_group:
+    if not done:
         return sep.join(strs)
     else:
         if len(strs) == 0:
@@ -288,5 +293,5 @@ def deadlines_to_str(deadlines, with_group=False):
         for i in group_deadlines:
             if len(result) > 0:
                 result += group_sep
-            result += f'{i}:{sep}{sep.join(group_deadlines[i])}'
+            result += f'{group_char}{i}:{sep}{sep.join(group_deadlines[i])}'
         return result

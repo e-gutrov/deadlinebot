@@ -7,50 +7,10 @@ import default_messages
 from utilities import User, Deadline, Group
 from clnd import Calendar
 
-TOKEN = input('Enter token: ')
+with open('token.txt', 'r') as fin:
+    TOKEN = fin.readline().strip()
 
 bot = telebot.TeleBot(TOKEN, threaded=False)  # threaded kills sqlalchemy, need to fix(?)
-
-
-@bot.message_handler(commands=['reset'])
-def reset_state(message):
-    user = util.get_user(message)
-    user.set_state('')
-    bot.send_message(message.chat.id, default_messages.ok)
-
-
-@bot.callback_query_handler(func=lambda x: x.data.startswith('settime'))
-def add_deadline_time_cb(call):
-    time = arrow.get(call.data.split()[1], 'HH:mm')
-    msg_strs = call.message.text.split('\n')
-    deadline_title = msg_strs[0][len('Дедлайн: '):]
-    deadline_date = arrow.get(msg_strs[1][len('Дата: '):], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
-    user = util.get_user(from_user=call.from_user)
-    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
-    user.add_deadline(util.add_deadline(deadline))
-    user.set_state('')
-
-    bot.delete_message(call.message.chat.id, call.message.message_id)
-    bot.send_message(call.message.chat.id, 'OK')
-
-
-@bot.message_handler(func=lambda x: util.get_user(x).state.startswith('settime'))  # TODO: fix
-def add_deadline_time(message):
-    try:
-        time = arrow.get(message.text, ['HH:mm', 'H:mm'])
-    except (arrow.ParserError, ValueError):
-        bot.send_message(message.chat.id, default_messages.invalid_time)
-        return
-
-    user = util.get_user(message)
-    tokens = user.state.split()
-    deadline_date = arrow.get(tokens[1], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
-    deadline_title = ' '.join(tokens[2:])
-
-    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
-    user.add_deadline(util.add_deadline(deadline))
-    user.set_state('')
-    bot.send_message(message.chat.id, 'OK')
 
 
 @bot.message_handler(commands=['start'])
@@ -63,6 +23,47 @@ def send_welcome(message):
 def send_help(message):
     util.get_user(message).set_state('')
     bot.send_message(message.chat.id, default_messages.helpmsg)
+
+
+@bot.message_handler(commands=['reset'])
+def reset_state(message):
+    util.get_user(message).set_state('')
+    bot.send_message(message.chat.id, default_messages.ok)
+
+
+@bot.message_handler(func=lambda x: util.get_user(x).state.startswith('settime'))
+def add_deadline_time(message):
+    try:
+        time = arrow.get(message.text, ['HH:mm', 'H:mm'])
+    except (arrow.ParserError, ValueError):
+        bot.send_message(message.chat.id, default_messages.invalid_time)
+        return
+
+    user = util.get_user(message, count_request=False)
+    tokens = user.state.split()
+    deadline_date = arrow.get(tokens[1], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
+    deadline_title = ' '.join(tokens[2:])
+
+    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
+    user.add_deadline(util.add_deadline(deadline))
+    user.set_state('')
+    bot.send_message(message.chat.id, default_messages.ok)
+
+
+@bot.callback_query_handler(func=lambda x: x.data.startswith('settime'))
+def add_deadline_time_cb(call):
+    user = util.get_user(from_user=call.from_user, count_request=False)
+    time = arrow.get(call.data.split()[1], 'HH:mm')
+    msg_strs = call.message.text.split('\n')
+    deadline_title = msg_strs[0][len('Дедлайн: '):]
+    deadline_date = arrow.get(msg_strs[1][len('Дата: '):], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
+
+    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
+    user.add_deadline(util.add_deadline(deadline))
+    user.set_state('')
+
+    bot.delete_message(call.message.chat.id, call.message.message_id)
+    bot.send_message(call.message.chat.id, 'OK')
 
 
 @bot.message_handler(commands=['add'])
@@ -101,7 +102,10 @@ def add_calendar(call):
             message_id=call.message.message_id,
             reply_markup=markup,
         )
-        util.get_user(from_user=call.from_user).set_state(f'settime {deadline_date.format("DD.MM.YY")} {deadline_title}')
+        util.get_user(
+            from_user=call.from_user,
+            count_request=False
+        ).set_state(f'settime {deadline_date.format("DD.MM.YY")} {deadline_title}')
 
 
 @bot.message_handler(commands=['list_done'])
@@ -123,7 +127,7 @@ def list_undone(message):
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_active_deadlines)
     else:
-        bot.send_message(message.chat.id, 'Дедлайны\n\n' + util.deadlines_to_str(deadlines, with_group=True))
+        bot.send_message(message.chat.id, 'Дедлайны\n\n' + util.deadlines_to_str(deadlines, done=True))
 
 
 @bot.message_handler(commands=['done'])
@@ -173,7 +177,7 @@ def mark_undone(message):
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('undone'))
 def mark_undone_cb(call):
-    user = util.get_user(from_user=call.from_user)
+    user = util.get_user(from_user=call.from_user, count_request=False)
     deadline = user.mark_undone(deadline_id=call.data.split()[1])
 
     if deadline is None:
@@ -185,7 +189,6 @@ def mark_undone_cb(call):
             message_id=call.message.message_id,
             reply_markup=None,
         )
-
 
 @bot.message_handler(commands=['create_group'])
 def create_group(message):
@@ -210,7 +213,7 @@ def list_groups(message):
 
 @bot.callback_query_handler(lambda x: x.data.startswith('leave'))
 def leave_group_cb(call):
-    user = util.get_user(from_user=call.from_user)
+    user = util.get_user(from_user=call.from_user, count_request=False)
     group = user.leave_group(group_id=call.data.split()[1])
     if group is None:
         bot.answer_callback_query(call.id, 'Группа уже удалена.')
@@ -246,7 +249,7 @@ def join_group(message):
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('shareb'))
 def share_back_to_deadlines(call):
-    user = util.get_user(from_user=call.from_user)
+    user = util.get_user(from_user=call.from_user, count_request=False)
     deadlines = user.get_undone_deadlines()
     if len(deadlines) == 0:
         text = default_messages.no_active_deadlines
@@ -268,7 +271,7 @@ def share_back_to_deadlines(call):
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('shared'))
 def share_deadline_chosen_cb(call):
-    user = util.get_user(from_user=call.from_user)
+    user = util.get_user(from_user=call.from_user, count_request=False)
     groups = user.get_groups()
     deadline = util.get_deadline(deadline_id=call.data.split()[1])
 
@@ -301,7 +304,7 @@ def share_group_chosen_cb(call):
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('del'))
 def delete_deadline_cb(call):
-    user = util.get_user(from_user=call.from_user)
+    user = util.get_user(from_user=call.from_user, count_request=False)
     deadline = user.remove_deadline(deadline_id=call.data.split()[1])
 
     if deadline is None:
@@ -452,4 +455,8 @@ def free_of_commands(message):
     user.set_state('')
 
 
-bot.polling(timeout=50, none_stop=True)
+while True:
+    try:
+        bot.polling(timeout=50, none_stop=True)
+    except Exception as e:
+        util.logger.error(e)
