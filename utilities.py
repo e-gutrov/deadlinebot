@@ -263,35 +263,42 @@ def get_groups_markup(groups, cb_data_prefix):
     return markup
 
 
-def deadlines_to_str(deadlines, done=False):
-    sep = '\n🔥'
+def deadlines_to_str(deadlines, done):
+    undone_emojis = ['☠️', '🔥', '⏳️']
+    done_emojis = ['✅']
+    group_emoji = '👥'
     group_sep = '\n\n'
-    group_char = '👥'
 
     strs = []
     group_deadlines = dict()
+    now_timestamp = arrow.now().timestamp
 
     for i in range(len(deadlines)):
         date = arrow.get(deadlines[i].deadline.timestamp).format("DD.MM.YY HH:mm")
-        deadline_str = f'{date} - {deadlines[i].deadline.title}'
-        if not done:
-            strs.append(f'[{i + 1}] {deadline_str}')
+        if done:
+            emoji = done_emojis[0]
         else:
-            group_name = deadlines[i].group_name
-            if group_name is None:
-                strs.append(deadline_str)
-                continue
-            group_deadlines.setdefault(group_name, []).append(deadline_str)
+            time_left = deadlines[i].deadline.timestamp - now_timestamp
+            if time_left < 0:
+                emoji = undone_emojis[0]
+            elif time_left > 86400:  # 60 * 60 * 24
+                emoji = undone_emojis[2]
+            else:
+                emoji = undone_emojis[1]
 
-    if not done:
-        return sep.join(strs)
+        deadline_str = f'{emoji}{date} - {deadlines[i].deadline.title}'
+        group_name = deadlines[i].group_name
+        if group_name is None:
+            strs.append(deadline_str)
+            continue
+        group_deadlines.setdefault(group_name, []).append(deadline_str)
+
+    if len(strs) == 0:
+        result = ''
     else:
-        if len(strs) == 0:
-            result = ''
-        else:
-            result = f'Личные:{sep}{sep.join(strs)}'
-        for i in group_deadlines:
-            if len(result) > 0:
-                result += group_sep
-            result += f'{group_char}{i}:{sep}{sep.join(group_deadlines[i])}'
-        return result
+        result = 'Личные:\n{}'.format('\n'.join(strs))
+    for i in group_deadlines:
+        if len(result) > 0:
+            result += group_sep
+        result += '{}{}:\n{}'.format(group_emoji, i, '\n'.join(group_deadlines[i]))
+    return result

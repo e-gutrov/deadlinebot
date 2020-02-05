@@ -63,7 +63,7 @@ def add_deadline_time_cb(call):
     user.set_state('')
 
     bot.delete_message(call.message.chat.id, call.message.message_id)
-    bot.send_message(call.message.chat.id, 'OK')
+    bot.send_message(call.message.chat.id, default_messages.ok)
 
 
 @bot.message_handler(commands=['add'])
@@ -116,7 +116,7 @@ def list_done(message):
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_done_deadlines)
     else:
-        bot.send_message(message.chat.id, 'Закрытые дедлайны:\n' + util.deadlines_to_str(deadlines))
+        bot.send_message(message.chat.id, 'Закрытые дедлайны\n\n' + util.deadlines_to_str(deadlines, done=True))
 
 
 @bot.message_handler(commands=['list'])
@@ -127,7 +127,7 @@ def list_undone(message):
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_active_deadlines)
     else:
-        bot.send_message(message.chat.id, 'Дедлайны\n\n' + util.deadlines_to_str(deadlines, done=True))
+        bot.send_message(message.chat.id, 'Дедлайны\n\n' + util.deadlines_to_str(deadlines, done=False))
 
 
 @bot.message_handler(commands=['done'])
@@ -147,7 +147,7 @@ def mark_done(message):
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('done'))
 def mark_done_cb(call):
-    user = util.get_user(from_user=call.from_user)
+    user = util.get_user(from_user=call.from_user, count_request=False)
     deadline = user.mark_done(deadline_id=call.data.split()[1])
     if deadline is None:
         bot.answer_callback_query(call.id, 'Дедлайн уже выполнен/удален.')
@@ -190,6 +190,7 @@ def mark_undone_cb(call):
             reply_markup=None,
         )
 
+
 @bot.message_handler(commands=['create_group'])
 def create_group(message):
     user = util.get_user(message)
@@ -211,6 +212,20 @@ def list_groups(message):
         bot.send_message(message.chat.id, 'Список групп:\n' + '\n'.join(strs))
 
 
+@bot.message_handler(commands=['leave'])
+def leave_group(message):
+    user = util.get_user(message)
+    user.set_state('')
+    groups = user.get_groups()
+    if len(groups) == 0:
+        bot.send_message(message.chat.id, default_messages.no_groups)
+    else:
+        bot.send_message(
+            message.chat.id, default_messages.leave_group,
+            reply_markup=util.get_groups_markup(groups, 'leave'),
+        )
+
+
 @bot.callback_query_handler(lambda x: x.data.startswith('leave'))
 def leave_group_cb(call):
     user = util.get_user(from_user=call.from_user, count_request=False)
@@ -226,25 +241,54 @@ def leave_group_cb(call):
         )
 
 
-@bot.message_handler(commands=['leave'])
-def leave_group(message):
+@bot.message_handler(commands=['join'])
+def join_group(message):
+    util.get_user(message).set_state('join')
+    bot.send_message(message.chat.id, 'Пришли мне ключ группы')
+
+
+@bot.message_handler(commands=['delete'])
+def delete_deadline(message):
     user = util.get_user(message)
     user.set_state('')
-    groups = user.get_groups()
-    if len(groups) == 0:
-        bot.send_message(message.chat.id, default_messages.no_groups)
+    deadlines = user.get_undone_deadlines()
+
+    bot.send_message(
+        message.chat.id, 'Какой дедлайн удалим?',
+        reply_markup=util.get_deadlines_markup(deadlines, 'del')
+    )
+
+
+@bot.callback_query_handler(func=lambda x: x.data.startswith('del'))
+def delete_deadline_cb(call):
+    user = util.get_user(from_user=call.from_user, count_request=False)
+    deadline = user.remove_deadline(deadline_id=call.data.split()[1])
+
+    if deadline is None:
+        bot.answer_callback_query(call.id, 'Дедлайн отмечен выполненным/удалён.')
     else:
-        bot.send_message(
-            message.chat.id, default_messages.leave_group,
-            reply_markup=util.get_groups_markup(groups, 'leave'),
+        bot.edit_message_text(
+            text=f'Дедлайн "{deadline.title}" в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:mm")} удалён.',
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=None,
         )
 
 
-@bot.message_handler(commands=['join'])
-def join_group(message):
+@bot.message_handler(commands=['share'])
+def share(message):
     user = util.get_user(message)
-    user.set_state('join')
-    bot.send_message(message.chat.id, 'Пришли мне ключ группы',)
+    user.set_state('')
+    deadlines = user.get_undone_deadlines()
+    if len(deadlines) == 0:
+        bot.send_message(message.chat.id, default_messages.no_active_deadlines)
+    elif len(user.groups) == 0:
+        bot.send_message(message.chat.id, default_messages.no_groups)
+    else:
+        bot.send_message(
+            message.chat.id, 'Каким дедлайном поделимся?',
+            reply_markup=util.get_deadlines_markup(deadlines, 'shared'),
+        )
 
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('shareb'))
@@ -302,50 +346,6 @@ def share_group_chosen_cb(call):
     )
 
 
-@bot.callback_query_handler(func=lambda x: x.data.startswith('del'))
-def delete_deadline_cb(call):
-    user = util.get_user(from_user=call.from_user, count_request=False)
-    deadline = user.remove_deadline(deadline_id=call.data.split()[1])
-
-    if deadline is None:
-        bot.answer_callback_query(call.id, 'Дедлайн отмечен выполненным/удалён.')
-    else:
-        bot.edit_message_text(
-            text=f'Дедлайн "{deadline.title}" в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:mm")} удалён.',
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=None,
-        )
-
-
-@bot.message_handler(commands=['delete'])
-def delete_deadline(message):
-    user = util.get_user(message)
-    user.set_state('')
-    deadlines = user.get_undone_deadlines()
-
-    bot.send_message(
-        message.chat.id, 'Какой дедлайн удалим?',
-        reply_markup=util.get_deadlines_markup(deadlines, 'del')
-    )
-
-
-@bot.message_handler(commands=['share'])
-def share(message):
-    user = util.get_user(message)
-    user.set_state('')
-    deadlines = user.get_undone_deadlines()
-    if len(deadlines) == 0:
-        bot.send_message(message.chat.id, default_messages.no_active_deadlines)
-    elif len(user.groups) == 0:
-        bot.send_message(message.chat.id, default_messages.no_groups)
-    else:
-        bot.send_message(
-            message.chat.id, 'Каким дедлайном поделимся?',
-            reply_markup=util.get_deadlines_markup(deadlines, 'shared'),
-        )
-
-
 @bot.callback_query_handler(func=lambda x: x.data.startswith('view'))
 def calendar_cb(call):
     if call.data.endswith('nothing'):
@@ -363,7 +363,7 @@ def calendar_cb(call):
         chosen_date_to = chosen_date_from.shift(days=1)
         chosen_date_from = chosen_date_from.timestamp
         chosen_date_to = chosen_date_to.timestamp
-        user = util.get_user(from_user=call.from_user)
+        user = util.get_user(from_user=call.from_user, count_request=False)
         deadlines = user.get_undone_deadlines()
         strs = []
         for i in range(len(deadlines)):
@@ -391,18 +391,6 @@ def give_calendar(message):
     )
 
 
-@bot.callback_query_handler(func=lambda x: x.data.startswith('key'))
-def get_key_cb(call):
-    group = util.get_group(call.data.split()[1])
-    bot.edit_message_text(
-        f'Высылаю ключ для присоединения к группе "{group.name}"',
-        chat_id=call.message.chat.id,
-        message_id=call.message.message_id,
-        reply_markup=None,
-    )
-    bot.send_message(call.message.chat.id, {group.id})
-
-
 @bot.message_handler(commands=['key'])
 def get_key(message):
     user = util.get_user(message)
@@ -418,9 +406,21 @@ def get_key(message):
         )
 
 
+@bot.callback_query_handler(func=lambda x: x.data.startswith('key'))
+def get_key_cb(call):
+    group = util.get_group(call.data.split()[1])
+    bot.edit_message_text(
+        f'Высылаю ключ для присоединения к группе "{group.name}"',
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        reply_markup=None,
+    )
+    bot.send_message(call.message.chat.id, {group.id})
+
+
 @bot.message_handler(func=lambda x: True)
 def free_of_commands(message):
-    user = util.get_user(message)
+    user = util.get_user(message, count_request=False)
     cid = message.chat.id
 
     if user.state == "" or user.state is None:
