@@ -20,6 +20,7 @@ KEY_LEN = 8
 KEY_CHARS = string.digits + string.ascii_letters
 logging.basicConfig(filename='info.log', filemode='a', level=logging.INFO)
 logger = logging.getLogger('utilities-logger')
+requests_counter = 0
 
 
 def gen_key():
@@ -33,7 +34,7 @@ class User(Base):
     first_name = Column(String)
     last_name = Column(String)
     state = Column(String)
-    time_shift = Column(Integer)  # time shift in seconds from MSK
+    time_shift = Column(Integer)  # time shift in seconds from UTC
 
     deadlines = relationship('UserDeadlineAssociation', back_populates='user')
     groups = relationship('Group', secondary=lambda: user_group_assoc_table, back_populates='users')
@@ -220,7 +221,9 @@ def get_user(message=None, from_user=None, count_request=True):
     user.last_name = from_user.last_name
     session.commit()
     if count_request:
-        logger.info(f'Successfully got user {user.first_name} {user.last_name}')
+        global requests_counter
+        requests_counter += 1
+        logger.info(f'got user. reqs: {requests_counter}')
     return user
 
 
@@ -249,7 +252,7 @@ def get_groups_markup(groups, cb_data_prefix):
     return markup
 
 
-def deadlines_to_str(deadlines, done):
+def deadlines_to_str(deadlines, done, time_shift):
     undone_emojis = ['☠️', '🔥', '⏳️']
     done_emojis = ['✅']
     group_emoji = '👥'
@@ -257,7 +260,7 @@ def deadlines_to_str(deadlines, done):
 
     strs = []
     group_deadlines = dict()
-    now_timestamp = arrow.now().timestamp
+    now_timestamp = arrow.utcnow().shift(seconds=time_shift).timestamp  # need to use user's time_shift
 
     for i in range(len(deadlines)):
         date = arrow.get(deadlines[i].deadline.timestamp).format("DD.MM.YY HH:mm")

@@ -116,7 +116,10 @@ def list_done(message):
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_done_deadlines)
     else:
-        bot.send_message(message.chat.id, 'Закрытые дедлайны\n\n' + util.deadlines_to_str(deadlines, done=True))
+        bot.send_message(
+            message.chat.id,
+            'Закрытые дедлайны\n\n' + util.deadlines_to_str(deadlines, done=True, time_shift=user.time_shift)
+        )
 
 
 @bot.message_handler(commands=['list'])
@@ -127,7 +130,10 @@ def list_undone(message):
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_active_deadlines)
     else:
-        bot.send_message(message.chat.id, 'Дедлайны\n\n' + util.deadlines_to_str(deadlines, done=False))
+        bot.send_message(
+            message.chat.id,
+            'Дедлайны\n\n' + util.deadlines_to_str(deadlines, done=False, time_shift=user.time_shift)
+        )
 
 
 @bot.message_handler(commands=['done'])
@@ -418,6 +424,13 @@ def get_key_cb(call):
     bot.send_message(call.message.chat.id, {group.id})
 
 
+@bot.message_handler(commands=['change_time'])
+def change_time(message):
+    user = util.get_user(message)
+    user.set_state('change_time')
+    bot.send_message(message.chat.id, default_messages.ask_datetime)
+
+
 @bot.message_handler(func=lambda x: True)
 def free_of_commands(message):
     user = util.get_user(message, count_request=False)
@@ -452,6 +465,14 @@ def free_of_commands(message):
         for deadline in group.deadlines:
             user.add_deadline(deadline)
 
+    elif user.state == "change_time":
+        try:
+            msg_dt = arrow.get(message.text, ['H:mm D.M.YY'])
+            user.time_shift = msg_dt.timestamp - message.date
+        except (arrow.ParserError, ValueError):
+            bot.send_message(message.chat.id, default_messages.invalid_datetime)
+            return
+        bot.send_message(message.chat.id, default_messages.ok)
     user.set_state('')
 
 
