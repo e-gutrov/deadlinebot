@@ -33,6 +33,7 @@ class User(Base):
     first_name = Column(String)
     last_name = Column(String)
     state = Column(String)
+    time_shift = Column(Integer)  # time shift in seconds from MSK
 
     deadlines = relationship('UserDeadlineAssociation', back_populates='user')
     groups = relationship('Group', secondary=lambda: user_group_assoc_table, back_populates='users')
@@ -142,7 +143,6 @@ class Group(Base):
 
     users = relationship('User', secondary=lambda: user_group_assoc_table, back_populates='groups')
     deadlines = relationship('Deadline', secondary=lambda: group_deadline_assoc_table)
-    # deadlines = relationship('GroupDeadlineAssociation', back_populates='group')
 
     def __init__(self, name: str):
         self.name = name
@@ -171,12 +171,8 @@ class Deadline(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String)
     timestamp = Column(Integer)
-    creator_id = Column(Integer)
 
     users = relationship('UserDeadlineAssociation', back_populates='deadline')
-
-    def __str__(self):
-        return f'id={self.id}, title={self.title}, timestamp={self.timestamp}, creator_id={self.creator_id}'
 
 
 class UserDeadlineAssociation(Base):
@@ -190,16 +186,6 @@ class UserDeadlineAssociation(Base):
 
     user = relationship('User', back_populates='deadlines')
     deadline = relationship('Deadline', back_populates='users')
-
-# class GroupDeadlineAssociation(Base):
-#     __tablename__ = 'group_deadline_association'
-#
-#     group_id = Column(String, ForeignKey('groups.id'), primary_key=True)
-#     deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
-#     status = Column(Integer)
-#
-#     group = relationship('Group', back_populates='deadlines')
-#     deadline = relationship('Deadline')
 
 
 user_group_assoc_table = sqlalchemy.Table(
@@ -227,7 +213,7 @@ def get_user(message=None, from_user=None, count_request=True):
         from_user = message.from_user
     user = session.query(User).filter_by(id=from_user.id).first()
     if user is None:
-        user = User(id=from_user.id)
+        user = User(id=from_user.id, time_shift=0)
         session.add(user)
         user.state = ''
     user.first_name = from_user.first_name
@@ -281,7 +267,7 @@ def deadlines_to_str(deadlines, done):
             time_left = deadlines[i].deadline.timestamp - now_timestamp
             if time_left < 0:
                 emoji = undone_emojis[0]
-            elif time_left > 86400:  # 60 * 60 * 24
+            elif time_left > 86400:  # 24 hours, 60 * 60 * 24
                 emoji = undone_emojis[2]
             else:
                 emoji = undone_emojis[1]

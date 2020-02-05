@@ -44,7 +44,7 @@ def add_deadline_time(message):
     deadline_date = arrow.get(tokens[1], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
     deadline_title = ' '.join(tokens[2:])
 
-    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
+    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp)
     user.add_deadline(util.add_deadline(deadline))
     user.set_state('')
     bot.send_message(message.chat.id, default_messages.ok)
@@ -58,7 +58,7 @@ def add_deadline_time_cb(call):
     deadline_title = msg_strs[0][len('Дедлайн: '):]
     deadline_date = arrow.get(msg_strs[1][len('Дата: '):], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
 
-    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp, creator_id=user.id)
+    deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp)
     user.add_deadline(util.add_deadline(deadline))
     user.set_state('')
 
