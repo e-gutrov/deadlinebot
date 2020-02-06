@@ -29,6 +29,7 @@ def gen_key():
 
 class User(Base):
     __tablename__ = 'users'
+    MAX_DEADLINES = 60
 
     id = Column(Integer, primary_key=True)
     first_name = Column(String)
@@ -48,6 +49,8 @@ class User(Base):
         ).first()
 
     def add_deadline(self, deadline, group_name=None, shared_user_name=None):
+        if len(self.deadlines) > User.MAX_DEADLINES:
+            return False
         if self.get_assoc(deadline) is None:
             session.add(
                 UserDeadlineAssociation(
@@ -59,6 +62,7 @@ class User(Base):
                 )
             )
         session.commit()
+        return True
 
     def remove_deadline(self, deadline=None, deadline_id=None):
         assoc = self.get_assoc(deadline, deadline_id)
@@ -161,7 +165,7 @@ class Group(Base):
         else:
             self.deadlines.append(deadline)
             if len(self.deadlines) > Group.MAX_DEADLINES:
-                pass  # TODO by date
+                self.deadlines.remove(min(self.deadlines, key=lambda x: x.timestamp))
             session.commit()
 
             return deadline
