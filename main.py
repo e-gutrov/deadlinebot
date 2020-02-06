@@ -142,7 +142,7 @@ def list_undone(message):
 def mark_done(message):
     user = util.get_user(message)
     user.set_state('')
-    deadlines = user.get_undone_deadlines()
+    deadlines = user.get_undone_deadlines(raw=True)
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_active_deadlines)
     else:
@@ -259,7 +259,7 @@ def join_group(message):
 def delete_deadline(message):
     user = util.get_user(message)
     user.set_state('')
-    deadlines = user.get_undone_deadlines()
+    deadlines = user.get_undone_deadlines(raw=True)
 
     bot.send_message(
         message.chat.id, 'Какой дедлайн удалим?',
@@ -287,7 +287,7 @@ def delete_deadline_cb(call):
 def share(message):
     user = util.get_user(message)
     user.set_state('')
-    deadlines = user.get_undone_deadlines()
+    deadlines = user.get_undone_deadlines(raw=True)
     if len(deadlines) == 0:
         bot.send_message(message.chat.id, default_messages.no_active_deadlines)
     elif len(user.groups) == 0:
@@ -302,7 +302,7 @@ def share(message):
 @bot.callback_query_handler(func=lambda x: x.data.startswith('shareb'))
 def share_back_to_deadlines(call):
     user = util.get_user(from_user=call.from_user, count_request=False)
-    deadlines = user.get_undone_deadlines()
+    deadlines = user.get_undone_deadlines(raw=True)
     if len(deadlines) == 0:
         text = default_messages.no_active_deadlines
         markup = None
@@ -340,12 +340,17 @@ def share_deadline_chosen_cb(call):
 
 @bot.callback_query_handler(func=lambda x: x.data.startswith('shareg'))
 def share_group_chosen_cb(call):
+    shared_user = util.get_user(from_user=call.from_user)
+    shared_user_name = shared_user.first_name
+    if shared_user.last_name is not None:
+        shared_user_name += ' ' + shared_user.last_name
+
     tokens = call.data.split()
     deadline = util.get_deadline(tokens[1])
     group = util.get_group(tokens[2])
     group.add_deadline(deadline)
     for user in group.users:
-        user.add_deadline(deadline, group.name)
+        user.add_deadline(deadline, group.name, 0, shared_user_name)  # TODO: shift_time for deadline
     bot.edit_message_text(
         f'Ты поделился дедлайном "{deadline.title}" с "{group.name}".',
         chat_id=call.message.chat.id,

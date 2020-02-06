@@ -47,14 +47,15 @@ class User(Base):
             deadline_id=deadline_id,
         ).first()
 
-    def add_deadline(self, deadline, group_name=None):
+    def add_deadline(self, deadline, group_name=None, time_shift=0, shared_user_name=None):
         if self.get_assoc(deadline) is None:
             session.add(
                 UserDeadlineAssociation(
                     user=self,
                     deadline=deadline,
                     group_name=group_name,
-                    time_shift=0,
+                    shared_user_name=shared_user_name,
+                    time_shift=time_shift,
                     status=0,
                 )
             )
@@ -187,7 +188,9 @@ class UserDeadlineAssociation(Base):
 
     user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
     deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
-    group_name = Column(String)
+    group_name = Column(String)  # from which group did it come
+    shared_user_name = Column(String)
+
     time_shift = Column(Integer)  # time shift in minutes from UTC for every user
 
     status = Column(Integer)  # 0 for undone, 1..MAX_DONE for done (1-latest)
@@ -246,8 +249,9 @@ def get_deadlines_markup(deadlines, cb_data_prefix):
     markup = InlineKeyboardMarkup()
     for deadline in deadlines:
         markup.add(InlineKeyboardButton(  # TODO: neeed to pass UserDeadlineAssoc for time_shift
-            f'[{arrow.get(deadline.timestamp).format("DD.MM HH:mm")}] {deadline.title}',
-            callback_data=f'{cb_data_prefix} {deadline.id}',
+            f'[{arrow.get(deadline.deadline.timestamp + deadline.time_shift * 60).format("DD.MM HH:mm")}] '
+            f'{deadline.deadline.title}',
+            callback_data=f'{cb_data_prefix} {deadline.deadline.id}',
         ))
     return markup
 
