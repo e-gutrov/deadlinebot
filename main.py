@@ -155,7 +155,7 @@ def mark_done(message):
         bot.send_message(
             message.chat.id,
             default_messages.mark_done,
-            reply_markup=util.get_deadlines_markup(deadlines, 'done'),
+            reply_markup=util.get_deadlines_markup(deadlines, user.time_shift, 'done'),
         )
 
 
@@ -185,7 +185,7 @@ def mark_undone(message):
         bot.send_message(
             message.chat.id,
             default_messages.mark_undone,
-            reply_markup=util.get_deadlines_markup(user.get_done_deadlines(), 'undone'),
+            reply_markup=util.get_deadlines_markup(user.get_done_deadlines(), user.time_shift, 'undone'),
         )
 
 
@@ -318,7 +318,7 @@ def share_back_to_deadlines(call):
         markup = None
     else:
         text = 'Каким дедлайном поделимся?'
-        markup = util.get_deadlines_markup(deadlines, 'shared')
+        markup = util.get_deadlines_markup(deadlines, user.time_shift, 'shared')
 
     bot.edit_message_text(
         text=text,
@@ -451,7 +451,7 @@ def change_time(message):
         message.chat.id,
         f'Кажется, у тебя сейчас {arrow.utcnow().shift(minutes=user.time_shift).format(util.DATE_FORMAT)}. '
         f'Если я неправ, пришли мне, на какое время нужно сдвинуться в формате чч:мм (если нужно сдвинуться назад, '
-        f'добавь - в начале).'
+        f'добавь \'-\' в начале сообщения).'
     )
 
 
@@ -499,6 +499,7 @@ def free_of_commands(message):
         sign = -1 if msg_tokens[0][0] == '-' else 1
         shift = (hours * 60 + minutes) * sign
         user.time_shift += shift  # TODO: commit to db?
+        util.session.commit()
         new_time = arrow.utcnow().shift(minutes=user.time_shift)
         bot.send_message(cid, f'Переставил твое время на {new_time.format(util.DATE_FORMAT)}.')
 
