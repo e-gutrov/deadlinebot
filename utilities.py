@@ -34,7 +34,7 @@ class User(Base):
     first_name = Column(String)
     last_name = Column(String)
     state = Column(String)
-    time_shift = Column(Integer)  # time shift in seconds from UTC
+    time_shift = Column(Integer)  # time shift in minutes from UTC
 
     deadlines = relationship('UserDeadlineAssociation', back_populates='user')
     groups = relationship('Group', secondary=lambda: user_group_assoc_table, back_populates='users')
@@ -54,6 +54,7 @@ class User(Base):
                     user=self,
                     deadline=deadline,
                     group_name=group_name,
+                    time_shift=0,
                     status=0,
                 )
             )
@@ -131,8 +132,13 @@ class User(Base):
         if not raw:
             undone_deadlines.sort(key=lambda x: (x.timestamp, x.id))
         else:
-            undone_deadlines.sort(key=lambda x: (x.deadline.timestamp, x.deadline.id))
+            undone_deadlines.sort(key=lambda x: (x.deadline.timestamp + x.time_shift, x.deadline.id))
         return undone_deadlines
+
+    def shift_deadlines(self, delta):
+        for i in self.deadlines:
+            i.time_shift += delta
+        session.commit()
 
 
 class Group(Base):
@@ -182,6 +188,7 @@ class UserDeadlineAssociation(Base):
     user_id = Column(Integer, ForeignKey('users.id'), primary_key=True)
     deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
     group_name = Column(String)
+    time_shift = Column(Integer)  # time shift in minutes from UTC for every user
 
     status = Column(Integer)  # 0 for undone, 1..MAX_DONE for done (1-latest)
 
@@ -214,7 +221,7 @@ def get_user(message=None, from_user=None, count_request=True):
         from_user = message.from_user
     user = session.query(User).filter_by(id=from_user.id).first()
     if user is None:
-        user = User(id=from_user.id, time_shift=0)
+        user = User(id=from_user.id, time_shift=3*60)  # MSK is UTC+3
         session.add(user)
         user.state = ''
     user.first_name = from_user.first_name
@@ -238,7 +245,7 @@ def get_deadline(deadline_id):
 def get_deadlines_markup(deadlines, cb_data_prefix):
     markup = InlineKeyboardMarkup()
     for deadline in deadlines:
-        markup.add(InlineKeyboardButton(
+        markup.add(InlineKeyboardButton(  # TODO: neeed to pass UserDeadlineAssoc for time_shift
             f'[{arrow.get(deadline.timestamp).format("DD.MM HH:mm")}] {deadline.title}',
             callback_data=f'{cb_data_prefix} {deadline.id}',
         ))
@@ -260,14 +267,15 @@ def deadlines_to_str(deadlines, done, time_shift):
 
     strs = []
     group_deadlines = dict()
-    now_timestamp = arrow.utcnow().shift(seconds=time_shift).timestamp  # need to use user's time_shift
+    now_timestamp = arrow.utcnow().shift(minutes=time_shift).timestamp  # TODO: need to use user's time_shift
 
     for i in range(len(deadlines)):
-        date = arrow.get(deadlines[i].deadline.timestamp).format("DD.MM.YY HH:mm")
+        deadline_timestamp = deadlines[i].deadline.timestamp + deadlines[i].time_shift * 60  # time_shift in minutes
+        date = arrow.get(deadline_timestamp).format("DD.MM.YY HH:mm")
         if done:
             emoji = done_emojis[0]
         else:
-            time_left = deadlines[i].deadline.timestamp - now_timestamp
+            time_left = deadline_timestamp - now_timestamp
             if time_left < 0:
                 emoji = undone_emojis[0]
             elif time_left > 86400:  # 24 hours, 60 * 60 * 24

@@ -1,3 +1,5 @@
+import re
+
 import telebot
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import arrow
@@ -369,15 +371,17 @@ def calendar_cb(call):
         chosen_date_to = chosen_date_from.shift(days=1)
         chosen_date_from = chosen_date_from.timestamp
         chosen_date_to = chosen_date_to.timestamp
+
         user = util.get_user(from_user=call.from_user, count_request=False)
-        deadlines = user.get_undone_deadlines()
+        deadlines = user.get_undone_deadlines(raw=True)
         strs = []
         for i in range(len(deadlines)):
-            if chosen_date_from <= deadlines[i].timestamp <= chosen_date_to:
+            deadline_timestamp = deadlines[i].deadline.timestamp  # TODO: think
+            if chosen_date_from <= deadline_timestamp <= chosen_date_to:
                 strs.append(
                     f'[{len(strs) + 1}] '
-                    f'{arrow.get(deadlines[i].timestamp).format("DD.MM.YY HH:mm")} - '
-                    f'{deadlines[i].title}'
+                    f'{arrow.get(deadline_timestamp).format("DD.MM.YY HH:mm")} - '
+                    f'{deadlines[i].deadline.title}'
                 )
 
         if len(strs) == 0:
@@ -428,7 +432,12 @@ def get_key_cb(call):
 def change_time(message):
     user = util.get_user(message)
     user.set_state('change_time')
-    bot.send_message(message.chat.id, default_messages.ask_datetime)
+    bot.send_message(
+        message.chat.id,
+        f'Кажется, у тебя сейчас {arrow.utcnow().shift(minutes=user.time_shift).format("HH:mm DD.MM.YY")}. '
+        f'Если я неправ, пришли мне, на какое время нужно сдвинуться в формате чч:мм (если нужно сдвинуться назад, '
+        f'добавь - в начале).'
+    )
 
 
 @bot.message_handler(func=lambda x: True)
@@ -466,14 +475,48 @@ def free_of_commands(message):
             user.add_deadline(deadline)
 
     elif user.state == "change_time":
-        try:
-            msg_dt = arrow.get(message.text, ['H:mm D.M.YY'])
-            user.time_shift = msg_dt.timestamp - message.date
-        except (arrow.ParserError, ValueError):
-            bot.send_message(message.chat.id, default_messages.invalid_datetime)
+        if re.match(r'-?\d{1,2}:\d{1,2}', message.text) is None:
+            bot.send_message(cid, default_messages.invalid_datetime)
             return
-        bot.send_message(message.chat.id, default_messages.ok)
+        msg_tokens = message.text.split(':')
+        hours = abs(int(msg_tokens[0]))
+        minutes = int(msg_tokens[1])
+        sign = -1 if msg_tokens[0][0] == '-' else 1
+        shift = (hours * 60 + minutes) * sign
+        user.time_shift += shift  # TODO: commit?
+
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton('Да', callback_data=f'shifttime_yes {shift}'),
+            InlineKeyboardButton('Нет', callback_data='shifttime_no')
+        )
+        new_time = arrow.utcnow().shift(minutes=user.time_shift)
+        bot.send_message(
+            cid,
+            f'Переставил твое время на {new_time.format("HH:mm DD.MM.YYYY")}.'
+            f'Переставить время текущих дедлайнов соответственно?',
+            reply_markup=markup
+        )
     user.set_state('')
+
+
+@bot.callback_query_handler(func=lambda x: x.data.startswith('shifttime'))
+def shift_deadlines(call):
+    if call.data == 'shifttime_no':
+        bot.edit_message_text(
+            'Ок, оставил как есть',
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=None,
+        )
+    else:
+        util.get_user(from_user=call.from_user, count_request=False).shift_deadlines(int(call.data.split()[1]))
+        bot.edit_message_text(
+            'Передвинул дедлайны',
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=None,
+        )
 
 
 while True:
