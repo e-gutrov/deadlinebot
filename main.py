@@ -376,7 +376,7 @@ def calendar_cb(call):
         deadlines = user.get_undone_deadlines(raw=True)
         strs = []
         for i in range(len(deadlines)):
-            deadline_timestamp = deadlines[i].deadline.timestamp  # TODO: think
+            deadline_timestamp = deadlines[i].deadline.timestamp + deadlines[i].time_shift * 60  # TODO: think
             if chosen_date_from <= deadline_timestamp <= chosen_date_to:
                 strs.append(
                     f'[{len(strs) + 1}] '
