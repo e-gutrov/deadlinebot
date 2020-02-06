@@ -33,7 +33,7 @@ class Calendar:
         for i in user.deadlines:
             if i.status != 0:
                 continue
-            i_date = arrow.get(i.deadline.timestamp + i.time_shift)
+            i_date = arrow.get(i.deadline.timestamp).shift(minutes=user.time_shift)
             if i_date.month == self.date.month and i_date.year == self.date.year:
                 cnt[i_date.day] += 1
 

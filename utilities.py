@@ -15,7 +15,7 @@ Session = sessionmaker(bind=engine)
 Base = declarative_base()
 
 MAX_STATUS = 10
-
+DATE_FORMAT = "DD.MM.YY HH:mm"
 KEY_LEN = 8
 KEY_CHARS = string.digits + string.ascii_letters
 logging.basicConfig(filename='info.log', filemode='a', level=logging.INFO)
@@ -47,7 +47,7 @@ class User(Base):
             deadline_id=deadline_id,
         ).first()
 
-    def add_deadline(self, deadline, group_name=None, time_shift=0, shared_user_name=None):
+    def add_deadline(self, deadline, group_name=None, shared_user_name=None):
         if self.get_assoc(deadline) is None:
             session.add(
                 UserDeadlineAssociation(
@@ -55,7 +55,6 @@ class User(Base):
                     deadline=deadline,
                     group_name=group_name,
                     shared_user_name=shared_user_name,
-                    time_shift=time_shift,
                     status=0,
                 )
             )
@@ -133,13 +132,8 @@ class User(Base):
         if not raw:
             undone_deadlines.sort(key=lambda x: (x.timestamp, x.id))
         else:
-            undone_deadlines.sort(key=lambda x: (x.deadline.timestamp + x.time_shift, x.deadline.id))
+            undone_deadlines.sort(key=lambda x: (x.deadline.timestamp, x.deadline.id))
         return undone_deadlines
-
-    def shift_deadlines(self, delta):
-        for i in self.deadlines:
-            i.time_shift += delta
-        session.commit()
 
 
 class Group(Base):
@@ -190,8 +184,6 @@ class UserDeadlineAssociation(Base):
     deadline_id = Column(Integer, ForeignKey('deadlines.id'), primary_key=True)
     group_name = Column(String)  # from which group did it come
     shared_user_name = Column(String)
-
-    time_shift = Column(Integer)  # time shift in minutes from UTC for every user
 
     status = Column(Integer)  # 0 for undone, 1..MAX_DONE for done (1-latest)
 
@@ -245,11 +237,11 @@ def get_deadline(deadline_id):
     return session.query(Deadline).filter_by(id=deadline_id).first()
 
 
-def get_deadlines_markup(deadlines, cb_data_prefix):
+def get_deadlines_markup(deadlines, user_time_shift, cb_data_prefix):
     markup = InlineKeyboardMarkup()
     for deadline in deadlines:
-        markup.add(InlineKeyboardButton(  # TODO: neeed to pass UserDeadlineAssoc for time_shift
-            f'[{arrow.get(deadline.deadline.timestamp + deadline.time_shift * 60).format("DD.MM HH:mm")}] '
+        markup.add(InlineKeyboardButton(
+            f'[{arrow.get(deadline.deadline.timestamp).shift(minutes=user_time_shift).format(DATE_FORMAT)}] '
             f'{deadline.deadline.title}',
             callback_data=f'{cb_data_prefix} {deadline.deadline.id}',
         ))
@@ -263,7 +255,7 @@ def get_groups_markup(groups, cb_data_prefix):
     return markup
 
 
-def deadlines_to_str(deadlines, done, time_shift):
+def deadlines_to_str(deadlines, done, user_time_shift):
     undone_emojis = ['☠️', '🔥', '⏳️']
     done_emojis = ['✅']
     group_emoji = '👥'
@@ -271,11 +263,11 @@ def deadlines_to_str(deadlines, done, time_shift):
 
     strs = []
     group_deadlines = dict()
-    now_timestamp = arrow.utcnow().shift(minutes=time_shift).timestamp  # TODO: need to use user's time_shift
+    now_timestamp = arrow.utcnow().timestamp
 
     for i in range(len(deadlines)):
-        deadline_timestamp = deadlines[i].deadline.timestamp + deadlines[i].time_shift * 60  # time_shift in minutes
-        date = arrow.get(deadline_timestamp).format("DD.MM.YY HH:mm")
+        deadline_timestamp = deadlines[i].deadline.timestamp
+        date = arrow.get(deadline_timestamp).shift(minutes=user_time_shift).format(DATE_FORMAT)
         if done:
             emoji = done_emojis[0]
         else:

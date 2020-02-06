@@ -43,7 +43,10 @@ def add_deadline_time(message):
 
     user = util.get_user(message, count_request=False)
     tokens = user.state.split()
-    deadline_date = arrow.get(tokens[1], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
+    deadline_date = arrow.get(tokens[1], 'DD.MM.YY').replace(
+        hour=time.hour,
+        minute=time.minute
+    ).shift(minutes=-user.time_shift)
     deadline_title = ' '.join(tokens[2:])
 
     deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp)
@@ -58,7 +61,10 @@ def add_deadline_time_cb(call):
     time = arrow.get(call.data.split()[1], 'HH:mm')
     msg_strs = call.message.text.split('\n')
     deadline_title = msg_strs[0][len('Дедлайн: '):]
-    deadline_date = arrow.get(msg_strs[1][len('Дата: '):], 'DD.MM.YY').replace(hour=time.hour, minute=time.minute)
+    deadline_date = arrow.get(msg_strs[1][len('Дата: '):], 'DD.MM.YY').replace(
+        hour=time.hour,
+        minute=time.minute
+    ).shift(minutes=-user.time_shift)
 
     deadline = Deadline(title=deadline_title, timestamp=deadline_date.timestamp)
     user.add_deadline(util.add_deadline(deadline))
@@ -120,7 +126,7 @@ def list_done(message):
     else:
         bot.send_message(
             message.chat.id,
-            'Закрытые дедлайны\n\n' + util.deadlines_to_str(deadlines, done=True, time_shift=user.time_shift)
+            'Закрытые дедлайны\n\n' + util.deadlines_to_str(deadlines, done=True, user_time_shift=user.time_shift)
         )
 
 
@@ -134,7 +140,7 @@ def list_undone(message):
     else:
         bot.send_message(
             message.chat.id,
-            'Дедлайны\n\n' + util.deadlines_to_str(deadlines, done=False, time_shift=user.time_shift)
+            'Дедлайны\n\n' + util.deadlines_to_str(deadlines, done=False, user_time_shift=user.time_shift)
         )
 
 
@@ -263,7 +269,7 @@ def delete_deadline(message):
 
     bot.send_message(
         message.chat.id, 'Какой дедлайн удалим?',
-        reply_markup=util.get_deadlines_markup(deadlines, 'del')
+        reply_markup=util.get_deadlines_markup(deadlines, user.time_shift, 'del')
     )
 
 
@@ -276,7 +282,8 @@ def delete_deadline_cb(call):
         bot.answer_callback_query(call.id, 'Дедлайн отмечен выполненным/удалён.')
     else:
         bot.edit_message_text(
-            text=f'Дедлайн "{deadline.title}" в {arrow.get(deadline.timestamp).format("DD.MM.YY HH:mm")} удалён.',
+            text=f'Дедлайн "{deadline.title}" в '
+            f'{arrow.get(deadline.timestamp).shift(minutes=user.time_shift).format(util.DATE_FORMAT)} удалён.',
             chat_id=call.message.chat.id,
             message_id=call.message.message_id,
             reply_markup=None,
@@ -295,7 +302,7 @@ def share(message):
     else:
         bot.send_message(
             message.chat.id, 'Каким дедлайном поделимся?',
-            reply_markup=util.get_deadlines_markup(deadlines, 'shared'),
+            reply_markup=util.get_deadlines_markup(deadlines, user.time_shift, 'shared'),
         )
 
 
@@ -350,7 +357,7 @@ def share_group_chosen_cb(call):
     group = util.get_group(tokens[2])
     group.add_deadline(deadline)
     for user in group.users:
-        user.add_deadline(deadline, group.name, 0, shared_user_name)  # TODO: shift_time for deadline
+        user.add_deadline(deadline, group.name, shared_user_name)
     bot.edit_message_text(
         f'Ты поделился дедлайном "{deadline.title}" с "{group.name}".',
         chat_id=call.message.chat.id,
@@ -372,7 +379,10 @@ def calendar_cb(call):
     elif call.data.endswith('dot'):
         bot.answer_callback_query(call.id, 'Этот день не принадлежит выбранному месяцу.')
     else:
-        chosen_date_from = arrow.get(call.data, 'D.MM.YYYY').replace(hour=0, minute=0, second=0)
+        user = util.get_user(from_user=call.from_user, count_request=False)
+        chosen_date_from = arrow.get(
+            call.data, 'D.MM.YYYY'
+        ).replace(hour=0, minute=0, second=0).shift(minutes=-user.time_shift)
         chosen_date_to = chosen_date_from.shift(days=1)
         chosen_date_from = chosen_date_from.timestamp
         chosen_date_to = chosen_date_to.timestamp
@@ -381,11 +391,11 @@ def calendar_cb(call):
         deadlines = user.get_undone_deadlines(raw=True)
         strs = []
         for i in range(len(deadlines)):
-            deadline_timestamp = deadlines[i].deadline.timestamp + deadlines[i].time_shift * 60  # TODO: think
+            deadline_timestamp = deadlines[i].deadline.timestamp
             if chosen_date_from <= deadline_timestamp <= chosen_date_to:
                 strs.append(
                     f'[{len(strs) + 1}] '
-                    f'{arrow.get(deadline_timestamp).format("DD.MM.YY HH:mm")} - '
+                    f'{arrow.get(deadline_timestamp).shift(minutes=user.time_shift).format(util.DATE_FORMAT)} - '
                     f'{deadlines[i].deadline.title}'
                 )
 
@@ -439,7 +449,7 @@ def change_time(message):
     user.set_state('change_time')
     bot.send_message(
         message.chat.id,
-        f'Кажется, у тебя сейчас {arrow.utcnow().shift(minutes=user.time_shift).format("HH:mm DD.MM.YY")}. '
+        f'Кажется, у тебя сейчас {arrow.utcnow().shift(minutes=user.time_shift).format(util.DATE_FORMAT)}. '
         f'Если я неправ, пришли мне, на какое время нужно сдвинуться в формате чч:мм (если нужно сдвинуться назад, '
         f'добавь - в начале).'
     )
@@ -477,7 +487,7 @@ def free_of_commands(message):
         user.add_group(group)
         bot.send_message(cid, f'Ты присоединился к группе "{group.name}".')
         for deadline in group.deadlines:
-            user.add_deadline(deadline)
+            user.add_deadline(deadline, group_name=group.name)
 
     elif user.state == "change_time":
         if re.match(r'-?\d{1,2}:\d{1,2}', message.text) is None:
@@ -488,40 +498,11 @@ def free_of_commands(message):
         minutes = int(msg_tokens[1])
         sign = -1 if msg_tokens[0][0] == '-' else 1
         shift = (hours * 60 + minutes) * sign
-        user.time_shift += shift  # TODO: commit?
-
-        markup = InlineKeyboardMarkup()
-        markup.add(
-            InlineKeyboardButton('Да', callback_data=f'shifttime_yes {shift}'),
-            InlineKeyboardButton('Нет', callback_data='shifttime_no')
-        )
+        user.time_shift += shift  # TODO: commit to db?
         new_time = arrow.utcnow().shift(minutes=user.time_shift)
-        bot.send_message(
-            cid,
-            f'Переставил твое время на {new_time.format("HH:mm DD.MM.YYYY")}.'
-            f'Переставить время текущих дедлайнов соответственно?',
-            reply_markup=markup
-        )
+        bot.send_message(cid, f'Переставил твое время на {new_time.format(util.DATE_FORMAT)}.')
+
     user.set_state('')
-
-
-@bot.callback_query_handler(func=lambda x: x.data.startswith('shifttime'))
-def shift_deadlines(call):
-    if call.data == 'shifttime_no':
-        bot.edit_message_text(
-            'Ок, оставил как есть',
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=None,
-        )
-    else:
-        util.get_user(from_user=call.from_user, count_request=False).shift_deadlines(int(call.data.split()[1]))
-        bot.edit_message_text(
-            'Передвинул дедлайны',
-            chat_id=call.message.chat.id,
-            message_id=call.message.message_id,
-            reply_markup=None,
-        )
 
 
 while True:
